@@ -7,31 +7,31 @@ import (
 )
 
 func main() {
-	// Initialize Manager with a storage folder
+	// 1. Setup Engine & Storage
 	mgr := parser.NewParserManager("./storage")
 	mgr.LoadSavedParsers()
+	dispatcher := parser.NewDispatcher(mgr)
 
-	protocolID := "CAN_V1_Engine"
+	// 2. Register Protocols (This happens once during AI Learning)
+	// Example: Signature 0x01 is for Engine, 0x02 is for Battery
+	dispatcher.Bind(0x01, "Engine_System")
+	dispatcher.Bind(0x02, "Battery_Pack")
 
-	// --- PHASE 1: THE LEARNING (Slow, only done once) ---
-	// In a real scenario, this 'aiCode' comes from an LLM API call
-	aiCode := `
-package dynamic
-func Parse(data []byte) map[string]interface{} {
-	return map[string]interface{}{"rpm": int(data[0]) * 100, "temp": int(data[1])}
-}`
-	mgr.RegisterParser(protocolID, aiCode)
-
-	// --- PHASE 2: THE DATA PLANE (Fast, repeated millions of times) ---
-	// High-speed data ingestion simulation
-	rawBusData := []byte{0x1E, 0x5A} // 3000 RPM, 90 Degrees
-
-	result, err := mgr.ParseData(protocolID, rawBusData)
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
+	// 3. Simulate a stream of different protocols hitting the gateway
+	incomingStream := [][]byte{
+		{0x01, 0x64, 0x0A, 0xF0}, // Engine Data
+		{0x02, 0x12, 0x34},       // Battery Data
+		{0x03, 0xFF},             // Unknown Data
 	}
 
-	fmt.Printf("\n🚀 High-Speed Parse Result for %s:\n", protocolID)
-	fmt.Printf("RPM: %v, Temp: %v\n", result["rpm"], result["temp"])
+	fmt.Println("🛰️  OmniBridge Gateway Active - Ingesting Stream...")
+
+	for _, raw := range incomingStream {
+		result, proto, err := dispatcher.Ingest(raw)
+		if err != nil {
+			fmt.Printf("❌ Error: %v\n", err)
+			continue
+		}
+		fmt.Printf("✅ Identified [%s]: %v\n", proto, result)
+	}
 }
