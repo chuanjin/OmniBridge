@@ -7,31 +7,37 @@ import (
 )
 
 func main() {
-	// 1. Setup Engine & Storage
 	mgr := parser.NewParserManager("./storage")
 	mgr.LoadSavedParsers()
 	dispatcher := parser.NewDispatcher(mgr)
+	discovery := parser.NewDiscoveryService(dispatcher, mgr)
 
-	// 2. Register Protocols (This happens once during AI Learning)
-	// Example: Signature 0x01 is for Engine, 0x02 is for Battery
+	// Known protocol
 	dispatcher.Bind(0x01, "Engine_System")
-	dispatcher.Bind(0x02, "Battery_Pack")
 
-	// 3. Simulate a stream of different protocols hitting the gateway
+	// Stream with an unknown signature (0x99)
 	incomingStream := [][]byte{
-		{0x01, 0x64, 0x0A, 0xF0}, // Engine Data
-		{0x02, 0x12, 0x34},       // Battery Data
-		{0x03, 0xFF},             // Unknown Data
+		{0x01, 0x64}, // Known
+		{0x99, 0x42}, // UNKNOWN - This will trigger Discovery
 	}
-
-	fmt.Println("🛰️  OmniBridge Gateway Active - Ingesting Stream...")
 
 	for _, raw := range incomingStream {
 		result, proto, err := dispatcher.Ingest(raw)
 		if err != nil {
-			fmt.Printf("❌ Error: %v\n", err)
-			continue
+			fmt.Println("🔍 Unknown protocol detected. Triggering Discovery Mode...")
+
+			// Trigger AI to learn this new protocol
+			newName, discErr := discovery.DiscoverNewProtocol(raw, "Industrial Sensor")
+			if discErr != nil {
+				fmt.Println("❌ Discovery failed:", discErr)
+				continue
+			}
+
+			// Try parsing again now that it's learned
+			result, proto, _ = dispatcher.Ingest(raw)
+			fmt.Printf("✨ New Protocol Learned: %s\n", newName)
 		}
-		fmt.Printf("✅ Identified [%s]: %v\n", proto, result)
+
+		fmt.Printf("✅ Parsed [%s]: %v\n", proto, result)
 	}
 }
