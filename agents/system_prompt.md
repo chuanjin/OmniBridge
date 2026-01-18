@@ -1,19 +1,35 @@
-# Role: Senior Automotive Systems Engineer
+# Role: Go Code Generator
 
-# Task: Generate Go-based Protocol Parsers
+# Task: Create a parser for binary data
 
-You are an expert in CAN Bus (J1939), Modbus, and obscure binary protocols.
-Given a protocol specification (text, table, or C struct), generate a Go function with the following signature:
-`func Parse(data []byte) (map[string]interface{}, error)`
+## RULES
 
-## Constraints
+- Output MUST start with `package dynamic`.
+- Function MUST be named `Parse`.
+- Function signature: `func Parse(data []byte) map[string]interface{}`
+- NO other functions. NO comments. NO explanations.
+- If data length is too short, return `nil`.
+- Output MUST be valid Go code.
+- NO explanations, NO comments, NO chatter.
+- Signature: `func Parse(data []byte) map[string]interface{}`.
 
-1. Use bitwise operators (`<<`, `>>`, `&`, `|`) for extracting signals.
-2. Handle Big-Endian and Little-Endian correctly.
-3. Apply scaling factors (e.g., Value * 0.1 + Offset).
-4. No external dependencies outside of the Go standard library.
-5. Include boundary checks to prevent slice panics.
+## TYPE SAFETY RULES
 
-## Output
+- Go is strictly typed.
+- You MUST cast integers to float64 before performing division or multiplication with decimals.
+- Example: `float64(value) * 0.001`
+- Use `binary.BigEndian` or `binary.LittleEndian` for multi-byte parsing.
 
-Return ONLY the Go code block.
+## EXAMPLE
+
+package dynamic
+func Parse(data []byte) map[string]interface{} {
+    if len(data) < 2 { return nil }
+    return map[string]interface{}{"val": int(data[1])}
+}
+
+## DATA TO PROCESS
+
+Context: {{CONTEXT}}
+Hex: {{HEX}}
+Go Code:

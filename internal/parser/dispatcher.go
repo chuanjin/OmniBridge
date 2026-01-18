@@ -12,6 +12,21 @@ type Dispatcher struct {
 	mu     sync.RWMutex
 }
 
+// GetBindings returns a copy of the current signature-to-parser mappings.
+// This is used by the DiscoveryService to persist learned protocols to disk.
+func (d *Dispatcher) GetBindings() map[uint8]string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	// Create a copy to ensure thread safety and data integrity
+	copy := make(map[uint8]string)
+	for k, v := range d.routes {
+		copy[k] = v
+	}
+
+	return copy
+}
+
 func NewDispatcher(mgr *ParserManager) *Dispatcher {
 	return &Dispatcher{
 		manager: mgr,

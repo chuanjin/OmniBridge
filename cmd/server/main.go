@@ -2,42 +2,90 @@ package main
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/chuanjin/OmniBridge/internal/parser"
 )
 
 func main() {
+	// 1. Initialize the Manager (Persistence) and Dispatcher (Routing)
 	mgr := parser.NewParserManager("./storage")
-	mgr.LoadSavedParsers()
-	dispatcher := parser.NewDispatcher(mgr)
-	discovery := parser.NewDiscoveryService(dispatcher, mgr)
-
-	// Known protocol
-	dispatcher.Bind(0x01, "Engine_System")
-
-	// Stream with an unknown signature (0x99)
-	incomingStream := [][]byte{
-		{0x01, 0x64}, // Known
-		{0x99, 0x42}, // UNKNOWN - This will trigger Discovery
+	if err := mgr.LoadSavedParsers(); err != nil {
+		log.Printf("Note: No existing parsers found in storage: %v", err)
 	}
 
+	dispatcher := parser.NewDispatcher(mgr)
+
+	// Automatically restore persistent bindings from manifest.json
+	manifest, err := mgr.LoadManifest()
+	if err == nil {
+		for sig, name := range manifest {
+			dispatcher.Bind(sig, name)
+			fmt.Printf("📦 Restored Binding: 0x%02X -> %s\n", sig, name)
+		}
+	}
+
+	// 2. Configure Local LLM (Ollama)
+	// Using deepseek-coder:1.3b is the right choice for speed and code accuracy.
+
+	// cfg := parser.DiscoveryConfig{
+	// 	Provider: "ollama",
+	// 	Endpoint: "http://localhost:11434/api/generate",
+	// 	Model:    "deepseek-coder:1.3b",
+	// }
+
+	cfg := parser.DiscoveryConfig{
+		Provider: "gemini",
+		Model:    "gemini-2.0-flash",
+	}
+	discovery := parser.NewDiscoveryService(dispatcher, mgr, cfg)
+
+	engineCode := `package dynamic
+	func Parse(data []byte) map[string]interface{} {
+		return map[string]interface{}{"rpm": int(data[1]) * 100}
+	}`
+
+	mgr.RegisterParser("Engine_System", engineCode)
+	// 3. Pre-bind a known protocol for testing the fast-path
+	dispatcher.Bind(0x01, "Engine_System")
+
+	// 4. Simulated Data Stream
+	// 0x01: Known Engine data
+	// 0x2A: NEW! Unknown signature. Let's imagine this is a High-Precision Voltage sensor
+	// where the next two bytes [0x03, 0xE8] represent 1000mV (Big-Endian).
+	incomingStream := [][]byte{
+		{0x01, 0x64},             // Known
+		{0x2A, 0x03, 0xE8, 0xFF}, // UNKNOWN - Will trigger Discovery
+	}
+
+	fmt.Println("🚀 OmniBridge Gateway Started")
+	fmt.Println("--------------------------------------------")
+
 	for _, raw := range incomingStream {
+		// Attempt to parse using cached/known logic
 		result, proto, err := dispatcher.Ingest(raw)
 		if err != nil {
-			fmt.Println("🔍 Unknown protocol detected. Triggering Discovery Mode...")
+			fmt.Printf("🔍 Error Ingesting [0x%X]: %v. Consulting Local AI...\n", raw[0], err)
 
-			// Trigger AI to learn this new protocol
-			newName, discErr := discovery.DiscoverNewProtocol(raw, "Industrial Sensor")
+			// 5. Trigger Discovery Mode
+			// We provide a rich context hint to help the AI write better code
+			context := "Industrial Voltage Sensor. Byte 0 is Signature, Byte 1-2 is Big-Endian Voltage (mV)."
+			newName, discErr := discovery.DiscoverNewProtocol(raw, context)
+
 			if discErr != nil {
-				fmt.Println("❌ Discovery failed:", discErr)
+				fmt.Printf("❌ Discovery failed: %v\n", discErr)
 				continue
 			}
 
-			// Try parsing again now that it's learned
+			// 6. Re-attempt Ingestion
+			// Now the manager has the new .go file and the dispatcher is bound.
 			result, proto, _ = dispatcher.Ingest(raw)
-			fmt.Printf("✨ New Protocol Learned: %s\n", newName)
+			fmt.Printf("✨ New Protocol Learned & Persistent: %s\n", newName)
 		}
 
-		fmt.Printf("✅ Parsed [%s]: %v\n", proto, result)
+		fmt.Printf("✅ [SUCCESS] Protocol: %-15s | Data: %v\n", proto, result)
 	}
+
+	fmt.Println("--------------------------------------------")
+	fmt.Println("Done. Check the ./storage folder for the generated Go parsers.")
 }
