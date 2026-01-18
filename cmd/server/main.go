@@ -5,9 +5,16 @@ import (
 	"log"
 
 	"github.com/chuanjin/OmniBridge/internal/parser"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	// Load .env file
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("Note: No .env file found, using system environment variables")
+	}
+
 	// 1. Initialize the Manager (Persistence) and Dispatcher (Routing)
 	mgr := parser.NewParserManager("./storage")
 	if err := mgr.LoadSavedParsers(); err != nil {
