@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 
@@ -32,18 +33,35 @@ func main() {
 		}
 	}
 
-	// 2. Configure Local LLM (Ollama)
-	// Using deepseek-coder:1.3b is the right choice for speed and code accuracy.
+	// 2. Configure Local/Cloud LLM via CLI flags
+	provider := flag.String("provider", "gemini", "LLM Provider (gemini, ollama)")
+	model := flag.String("model", "", "Model Name (default: gemini-2.0-flash for gemini, deepseek-coder:1.3b for ollama)")
+	endpoint := flag.String("endpoint", "", "API Endpoint")
+	flag.Parse()
 
-	// cfg := parser.DiscoveryConfig{
-	// 	Provider: "ollama",
-	// 	Endpoint: "http://localhost:11434/api/generate",
-	// 	Model:    "deepseek-coder:1.3b",
-	// }
+	// Set defaults based on provider if not specified
+	effectiveModel := *model
+	if effectiveModel == "" {
+		if *provider == "ollama" {
+			effectiveModel = "deepseek-coder:1.3b"
+		} else {
+			effectiveModel = "gemini-2.0-flash"
+		}
+	}
+
+	effectiveEndpoint := *endpoint
+	if effectiveEndpoint == "" {
+		if *provider == "ollama" {
+			effectiveEndpoint = "http://localhost:11434/api/generate"
+		} else {
+			effectiveEndpoint = "https://generativelanguage.googleapis.com/v1beta/models"
+		}
+	}
 
 	cfg := parser.DiscoveryConfig{
-		Provider: "gemini",
-		Model:    "gemini-2.0-flash",
+		Provider: *provider,
+		Model:    effectiveModel,
+		Endpoint: effectiveEndpoint,
 	}
 	discovery := parser.NewDiscoveryService(dispatcher, mgr, cfg)
 

@@ -119,8 +119,10 @@ func (s *DiscoveryService) callCloud(prompt string) (string, error) {
 		return "", fmt.Errorf("GEMINI_API_KEY environment variable is not set")
 	}
 
-	// Gemini 2.0 Flash endpoint
-	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey
+	// Construct URL dynamically using Endpoint and Model
+	// Default Endpoint: https://generativelanguage.googleapis.com/v1beta/models
+	// Format: <Endpoint>/<Model>:generateContent?key=<ApiKey>
+	url := fmt.Sprintf("%s/%s:generateContent?key=%s", s.Config.Endpoint, s.Config.Model, apiKey)
 
 	payload := map[string]interface{}{
 		"contents": []map[string]interface{}{
