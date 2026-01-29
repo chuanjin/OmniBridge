@@ -60,6 +60,14 @@ func (m *ParserManager) RegisterParser(protocolID, code string) error {
 	return nil
 }
 
+// GetParserCode returns the source code for a given protocol ID
+func (m *ParserManager) GetParserCode(protocolID string) (string, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	code, exists := m.cache[protocolID]
+	return code, exists
+}
+
 // ParseData executes the parser at native speed from cache
 func (m *ParserManager) ParseData(protocolID string, data []byte) (map[string]interface{}, error) {
 	m.mu.RLock()

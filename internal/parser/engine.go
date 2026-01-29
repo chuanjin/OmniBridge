@@ -21,17 +21,22 @@ func NewEngine() *Engine {
 func (e *Engine) Execute(rawData []byte, goCode string) (map[string]interface{}, error) {
 	_, err := e.interpreter.Eval(goCode)
 	if err != nil {
-		return nil, fmt.Errorf("failed to eval AI code: %v", err)
+		return nil, fmt.Errorf("COMPILE_ERROR: %v", err)
 	}
 
 	// Look for the "Parse" function in the dynamic package
 	v, err := e.interpreter.Eval("dynamic.Parse")
 	if err != nil {
-		return nil, fmt.Errorf("could not find Parse function: %v", err)
+		return nil, fmt.Errorf("RECOVERY_ERROR: could not find Parse function: %v", err)
 	}
 
 	// Call the function
-	fn := v.Interface().(func([]byte) map[string]interface{})
+	fn, ok := v.Interface().(func([]byte) map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("RECOVERY_ERROR: Parse function has wrong signature")
+	}
+
+	// Safety wrapper for the call to catch panics if needed (simplified for now)
 	result := fn(rawData)
 
 	return result, nil

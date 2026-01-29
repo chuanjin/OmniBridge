@@ -62,12 +62,33 @@ func (s *DiscoveryService) DiscoverNewProtocol(rawSample []byte, contextHint str
 	fullPrompt := fmt.Sprintf("%s\n\nINPUT:\nHex Sample: %X\nProtocol Hints: %s",
 		string(systemPrompt), rawSample, contextHint)
 
+	return s.requestAndRegister(fullPrompt, rawSample[0])
+}
+
+func (s *DiscoveryService) RepairParser(protocolID string, faultyCode string, errorMsg string, rawSample []byte) (string, error) {
+	fmt.Printf("🔧 Repair Mode [%s]: Fixing protocol %s...\n", s.Config.Provider, protocolID)
+
+	absPath, _ := filepath.Abs("agents/system_prompt.md")
+	systemPrompt, err := ioutil.ReadFile(absPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to load system_prompt.md: %v", err)
+	}
+
+	fullPrompt := fmt.Sprintf("%s\n\n### ERROR TO FIX\nYou previously generated code that failed.\n\nFAULTY CODE:\n```go\n%s\n```\n\nERROR MESSAGE:\n%s\n\nINPUT DATA (Hex): %X\n\nPlease fix the code and return only the valid Go code.",
+		string(systemPrompt), faultyCode, errorMsg, rawSample)
+
+	return s.requestAndRegister(fullPrompt, rawSample[0])
+}
+
+func (s *DiscoveryService) requestAndRegister(prompt string, signature byte) (string, error) {
 	var generatedCode string
+	var err error
+
 	// 3. Route to provider (Ollama/Cloud)
 	if s.Config.Provider == "ollama" {
-		generatedCode, err = s.callOllama(fullPrompt)
+		generatedCode, err = s.callOllama(prompt)
 	} else {
-		generatedCode, err = s.callCloud(fullPrompt)
+		generatedCode, err = s.callCloud(prompt)
 	}
 
 	if err != nil {
@@ -75,7 +96,7 @@ func (s *DiscoveryService) DiscoverNewProtocol(rawSample []byte, contextHint str
 	}
 
 	// 4. Register and Bind
-	protocolID := fmt.Sprintf("auto_proto_0x%X", rawSample[0])
+	protocolID := fmt.Sprintf("auto_proto_0x%X", signature)
 
 	cleanCode := sanitizeAiCode(generatedCode)
 	// Register the CLEAN code
@@ -84,7 +105,7 @@ func (s *DiscoveryService) DiscoverNewProtocol(rawSample []byte, contextHint str
 		return "", err
 	}
 
-	s.dispatcher.Bind(rawSample[0], protocolID)
+	s.dispatcher.Bind(signature, protocolID)
 
 	// Persist the new binding to the manifest file
 	s.manager.SaveManifest(s.dispatcher.GetBindings())

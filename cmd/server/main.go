@@ -89,11 +89,36 @@ func main() {
 	for _, raw := range incomingStream {
 		// Attempt to parse using cached/known logic
 		result, proto, err := dispatcher.Ingest(raw)
-		if err != nil {
+
+		// 5. SELF-HEALING: If ingest fails for a KNOWN protocol (e.g., compile error), try to repair it
+		if err != nil && proto != "" {
+			fmt.Printf("🔧 Detected error in [0x%X] (%s): %v. Attempting repair...\n", raw[0], proto, err)
+
+			// Get the faulty code from the manager to send back to the AI
+			faultyCode, exists := mgr.GetParserCode(proto)
+			if !exists {
+				fmt.Printf("❌ Could not find code for protocol %s to repair\n", proto)
+				continue
+			}
+
+			_, repairErr := discovery.RepairParser(proto, faultyCode, err.Error(), raw)
+			if repairErr != nil {
+				fmt.Printf("❌ Repair failed: %v\n", repairErr)
+				continue
+			}
+
+			// Re-attempt ingestion after repair
+			result, proto, err = dispatcher.Ingest(raw)
+			if err == nil {
+				fmt.Printf("✨ Protocol %s repaired successfully!\n", proto)
+			}
+		}
+
+		// 6. DISCOVERY: If protocol is entirely unknown
+		if err != nil && proto == "" {
 			fmt.Printf("🔍 Error Ingesting [0x%X]: %v. Consulting Local AI...\n", raw[0], err)
 
-			// 5. Trigger Discovery Mode
-			// We provide a rich context hint to help the AI write better code
+			// Trigger Discovery Mode
 			context := "Industrial Voltage Sensor. Byte 0 is Signature, Byte 1-2 is Big-Endian Voltage (mV)."
 			newName, discErr := discovery.DiscoverNewProtocol(raw, context)
 
@@ -102,13 +127,14 @@ func main() {
 				continue
 			}
 
-			// 6. Re-attempt Ingestion
-			// Now the manager has the new .go file and the dispatcher is bound.
+			// Re-attempt Ingestion
 			result, proto, _ = dispatcher.Ingest(raw)
 			fmt.Printf("✨ New Protocol Learned & Persistent: %s\n", newName)
 		}
 
-		fmt.Printf("✅ [SUCCESS] Protocol: %-15s | Data: %v\n", proto, result)
+		if err == nil {
+			fmt.Printf("✅ [SUCCESS] Protocol: %-15s | Data: %v\n", proto, result)
+		}
 	}
 
 	fmt.Println("--------------------------------------------")
