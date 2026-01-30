@@ -85,6 +85,7 @@ func main() {
 	// 0x2A: Known from previous tests (will trigger repair/discovery if not in storage)
 	incomingStream := [][]byte{
 		{0x01, 0x64},                   // Single-byte match
+		{0x41, 0x0C, 0x1A, 0xF8},       // REAL! OBD-II Engine RPM (1726 RPM)
 		{0x55, 0xAA, 0x03, 0xE8, 0xFF}, // MULTI-BYTE Signature - Will trigger Discovery
 		{0x2A, 0x01, 0xF4},             // Known or Discovery (added 0xF4 to make it 3 bytes)
 		{0x99, 0xFF, 0x00, 0x01},       // NEW Signature - Will test automated extraction
