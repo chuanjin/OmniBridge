@@ -6,43 +6,82 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 )
 
 type ParserManager struct {
 	engine      *Engine
 	storagePath string
+	seedPath    string
 	cache       map[string]string // ProtocolID -> GoCode
 	mu          sync.RWMutex
 }
 
-func NewParserManager(storagePath string) *ParserManager {
+func NewParserManager(storagePath string, seedPath string) *ParserManager {
 	if _, err := os.Stat(storagePath); os.IsNotExist(err) {
 		os.MkdirAll(storagePath, 0o755)
 	}
 	return &ParserManager{
 		engine:      NewEngine(),
 		storagePath: storagePath,
+		seedPath:    seedPath,
 		cache:       make(map[string]string),
 	}
 }
 
+// SeedParsers copies files from seedPath to storagePath if they don't exist
+func (m *ParserManager) SeedParsers() error {
+	if m.seedPath == "" {
+		return nil
+	}
+
+	files, err := ioutil.ReadDir(m.seedPath)
+	if err != nil {
+		return nil // Ignore if seed path doesn't exist
+	}
+
+	for _, file := range files {
+		destPath := filepath.Join(m.storagePath, file.Name())
+		if _, err := os.Stat(destPath); os.IsNotExist(err) {
+			content, err := ioutil.ReadFile(filepath.Join(m.seedPath, file.Name()))
+			if err == nil {
+				ioutil.WriteFile(destPath, content, 0o644)
+				fmt.Printf("🌱 Seeded parser: %s\n", file.Name())
+			}
+		}
+	}
+	return nil
+}
+
 // LoadSavedParsers reads all .go files from the storage folder on startup
-func (m *ParserManager) LoadSavedParsers() error {
+// Returns a map of ProtocolID -> SignatureHex
+func (m *ParserManager) LoadSavedParsers() (map[string]string, error) {
 	files, err := ioutil.ReadDir(m.storagePath)
 	if err != nil {
-		return err
+		return nil, err
 	}
+
+	bindings := make(map[string]string)
+	reSig := regexp.MustCompile(`// Signature:\s*([0-9A-Fa-f]+)`)
 
 	for _, file := range files {
 		if filepath.Ext(file.Name()) == ".go" {
 			protocolID := file.Name()[:len(file.Name())-3]
 			content, _ := ioutil.ReadFile(filepath.Join(m.storagePath, file.Name()))
-			m.cache[protocolID] = string(content)
+			code := string(content)
+			m.cache[protocolID] = code
+
+			// Extract signature from code comments
+			matches := reSig.FindStringSubmatch(code)
+			if len(matches) > 1 {
+				bindings[protocolID] = matches[1]
+			}
+
 			fmt.Printf("📦 Loaded cached parser for: %s\n", protocolID)
 		}
 	}
-	return nil
+	return bindings, nil
 }
 
 // RegisterParser saves a new AI-generated parser to disk and cache

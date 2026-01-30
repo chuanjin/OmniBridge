@@ -18,20 +18,30 @@ func main() {
 	}
 
 	// 1. Initialize the Manager (Persistence) and Dispatcher (Routing)
-	mgr := parser.NewParserManager("./storage")
-	if err := mgr.LoadSavedParsers(); err != nil {
-		log.Printf("Note: No existing parsers found in storage: %v", err)
+	mgr := parser.NewParserManager("./storage", "./seeds")
+	mgr.SeedParsers()
+
+	// Load stored parsers and auto-bind those that have a // Signature: comment
+	bindings, err := mgr.LoadSavedParsers()
+	if err != nil {
+		log.Printf("Note: Error loading parsers: %v", err)
 	}
 
 	dispatcher := parser.NewDispatcher(mgr)
 
-	// Automatically restore persistent bindings from manifest.json
+	// Bind from code-extracted signatures
+	for name, sigHex := range bindings {
+		sig := hexToBytes(sigHex)
+		dispatcher.Bind(sig, name)
+		fmt.Printf("📦 Auto-Bound (from source): 0x%X -> %s\n", sig, name)
+	}
+
+	// Also restore from manifest.json for any that don't have source signatures
 	manifest, err := mgr.LoadManifest()
 	if err == nil {
 		for sigHex, name := range manifest {
 			sig := hexToBytes(sigHex)
-			dispatcher.Bind(sig, name)
-			fmt.Printf("📦 Restored Binding: 0x%X -> %s\n", sig, name)
+			dispatcher.Bind(sig, name) // Will overwrite if already bound, which is fine
 		}
 	}
 
@@ -67,14 +77,7 @@ func main() {
 	}
 	discovery := parser.NewDiscoveryService(dispatcher, mgr, cfg)
 
-	engineCode := `package dynamic
-	func Parse(data []byte) map[string]interface{} {
-		return map[string]interface{}{"rpm": int(data[1]) * 100}
-	}`
-
-	mgr.RegisterParser("Engine_System", engineCode)
-	// 3. Pre-bind a known protocol for testing the fast-path
-	dispatcher.Bind([]byte{0x01}, "Engine_System")
+	// 3. Pre-bind is no longer needed here as it's loaded from storage/Engine_System.go
 
 	// 4. Simulated Data Stream
 	// 0x01: Known Engine data
@@ -84,6 +87,7 @@ func main() {
 		{0x01, 0x64},                   // Single-byte match
 		{0x55, 0xAA, 0x03, 0xE8, 0xFF}, // MULTI-BYTE Signature - Will trigger Discovery
 		{0x2A, 0x01, 0xF4},             // Known or Discovery (added 0xF4 to make it 3 bytes)
+		{0x99, 0xFF, 0x00, 0x01},       // NEW Signature - Will test automated extraction
 	}
 
 	fmt.Println("🚀 OmniBridge Gateway Started")
@@ -104,12 +108,9 @@ func main() {
 				continue
 			}
 
-			// In a real app, we'd extract the sig that matched this proto.
-			// For this demo, we'll just use the first byte or a hardcoded one for known cases.
-			sig := []byte{raw[0]}
-			if proto == "auto_proto_0x55AA" {
-				sig = []byte{0x55, 0xAA}
-			}
+			// With generalized discovery, we can just pass nil or empty signature
+			// if we want the AI to re-verify it, or use the one we know.
+			sig := []byte(nil)
 
 			_, repairErr := discovery.RepairParser(proto, faultyCode, err.Error(), raw, sig)
 			if repairErr != nil {
@@ -129,14 +130,10 @@ func main() {
 			fmt.Printf("🔍 Error Ingesting [0x%X]: %v. Consulting Local AI...\n", raw[0], err)
 
 			// Trigger Discovery Mode
-			// For the 0x55 0xAA sample, we want to specify it's a 2-byte signature
-			sig := []byte{raw[0]}
-			if len(raw) > 1 && raw[0] == 0x55 && raw[1] == 0xAA {
-				sig = []byte{0x55, 0xAA}
-			}
-
+			// Trigger Discovery Mode WITHOUT hardcoded signatures
+			// The AI will now identify the signature from the raw data.
 			context := "Industrial Voltage Sensor. Byte 0 is Signature, Byte 1-2 is Big-Endian Voltage (mV)."
-			newName, discErr := discovery.DiscoverNewProtocol(raw, sig, context)
+			newName, discErr := discovery.DiscoverNewProtocol(raw, nil, context)
 
 			if discErr != nil {
 				fmt.Printf("❌ Discovery failed: %v\n", discErr)

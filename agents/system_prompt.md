@@ -5,6 +5,7 @@
 ## RULES
 
 - Output MUST start with `package dynamic`.
+- You MUST identify the unique byte signature (prefix) of the protocol from the input and include it as a comment: `// Signature: <HEX>` (e.g., `// Signature: 55AA`).
 - Function MUST be named `Parse`.
 - Function signature: `func Parse(data []byte) map[string]interface{}`
 - NO other functions. NO comments. NO explanations.

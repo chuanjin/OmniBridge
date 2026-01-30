@@ -2,6 +2,7 @@ package parser
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -102,8 +103,27 @@ func (s *DiscoveryService) requestAndRegister(prompt string, signature []byte) (
 		return "", err
 	}
 
-	// 4. Register and Bind
-	protocolID := fmt.Sprintf("auto_proto_0x%X", signature)
+	// 4. Extract Signature from code if it exists (// Signature: 01AA)
+	reSig := regexp.MustCompile(`// Signature:\s*([0-9A-Fa-f]+)`)
+	matches := reSig.FindStringSubmatch(generatedCode)
+
+	finalSig := signature
+	if len(matches) > 1 {
+		hexStr := matches[1]
+		if len(hexStr)%2 != 0 {
+			hexStr = "0" + hexStr
+		}
+		sigBytes, _ := hex.DecodeString(hexStr)
+		if len(sigBytes) > 0 {
+			finalSig = sigBytes
+		}
+	}
+
+	if len(finalSig) == 0 {
+		return "", fmt.Errorf("no signature found in AI response and none provided")
+	}
+
+	protocolID := fmt.Sprintf("auto_proto_0x%X", finalSig)
 
 	cleanCode := sanitizeAiCode(generatedCode)
 	// Register the CLEAN code
@@ -112,7 +132,7 @@ func (s *DiscoveryService) requestAndRegister(prompt string, signature []byte) (
 		return "", err
 	}
 
-	s.dispatcher.Bind(signature, protocolID)
+	s.dispatcher.Bind(finalSig, protocolID)
 
 	// Persist the new binding to the manifest file
 	s.manager.SaveManifest(s.dispatcher.GetBindings())
