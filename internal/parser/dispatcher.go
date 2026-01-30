@@ -1,25 +1,25 @@
 package parser
 
 import (
+	"bytes"
+	"encoding/hex"
 	"fmt"
 	"sync"
 )
 
 type Dispatcher struct {
 	manager *ParserManager
-	// Map of Byte Signature -> ProtocolID (e.g., "0x05" -> "VolvoEngine")
-	routes map[byte]string
+	// Map of Hex Signature Prefix -> ProtocolID (e.g., "01" -> "VolvoEngine", "012A" -> "SpecialSensor")
+	routes map[string]string
 	mu     sync.RWMutex
 }
 
 // GetBindings returns a copy of the current signature-to-parser mappings.
-// This is used by the DiscoveryService to persist learned protocols to disk.
-func (d *Dispatcher) GetBindings() map[uint8]string {
+func (d *Dispatcher) GetBindings() map[string]string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	// Create a copy to ensure thread safety and data integrity
-	copy := make(map[uint8]string)
+	copy := make(map[string]string)
 	for k, v := range d.routes {
 		copy[k] = v
 	}
@@ -30,15 +30,16 @@ func (d *Dispatcher) GetBindings() map[uint8]string {
 func NewDispatcher(mgr *ParserManager) *Dispatcher {
 	return &Dispatcher{
 		manager: mgr,
-		routes:  make(map[byte]string),
+		routes:  make(map[string]string),
 	}
 }
 
-// Bind links a specific leading byte (signature) to a parser
-func (d *Dispatcher) Bind(signature byte, protocolID string) {
+// Bind links a specific byte slice (signature) to a parser
+func (d *Dispatcher) Bind(signature []byte, protocolID string) {
+	hexSig := fmt.Sprintf("%X", signature)
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.routes[signature] = protocolID
+	d.routes[hexSig] = protocolID
 }
 
 // Ingest takes raw data, identifies the protocol, and parses it
@@ -48,14 +49,39 @@ func (d *Dispatcher) Ingest(data []byte) (map[string]interface{}, string, error)
 	}
 
 	d.mu.RLock()
-	protocolID, exists := d.routes[data[0]] // Peek at the first byte
-	d.mu.RUnlock()
+	defer d.mu.RUnlock()
 
-	if !exists {
-		return nil, "", fmt.Errorf("unknown protocol signature: 0x%X", data[0])
+	var matchedProto string
+	var matchedSig string
+
+	// Longest prefix match
+	for sig, proto := range d.routes {
+		sigBytes := hexToBytes(sig)
+		if bytes.HasPrefix(data, sigBytes) {
+			if len(sig) > len(matchedSig) {
+				matchedSig = sig
+				matchedProto = proto
+			}
+		}
+	}
+
+	if matchedProto == "" {
+		maxLen := 4
+		if len(data) < maxLen {
+			maxLen = len(data)
+		}
+		return nil, "", fmt.Errorf("unknown protocol signature: 0x%X...", data[:maxLen])
 	}
 
 	// Use the manager to run the cached parser
-	result, err := d.manager.ParseData(protocolID, data)
-	return result, protocolID, err
+	result, err := d.manager.ParseData(matchedProto, data)
+	return result, matchedProto, err
+}
+
+func hexToBytes(h string) []byte {
+	if len(h)%2 != 0 {
+		h = "0" + h
+	}
+	b, _ := hex.DecodeString(h)
+	return b
 }

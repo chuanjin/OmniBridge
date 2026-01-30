@@ -48,8 +48,11 @@ func NewDiscoveryService(d *Dispatcher, m *ParserManager, cfg DiscoveryConfig) *
 	}
 }
 
-func (s *DiscoveryService) DiscoverNewProtocol(rawSample []byte, contextHint string) (string, error) {
-	fmt.Printf("🔒 Discovery Mode [%s]: Analyzing signature 0x%X...\n", s.Config.Provider, rawSample[0])
+func (s *DiscoveryService) DiscoverNewProtocol(rawSample []byte, signature []byte, contextHint string) (string, error) {
+	if len(signature) == 0 {
+		signature = []byte{rawSample[0]}
+	}
+	fmt.Printf("🔒 Discovery Mode [%s]: Analyzing signature 0x%X...\n", s.Config.Provider, signature)
 
 	// 1. Load System Prompt from the agents folder
 	absPath, _ := filepath.Abs("agents/system_prompt.md")
@@ -62,10 +65,10 @@ func (s *DiscoveryService) DiscoverNewProtocol(rawSample []byte, contextHint str
 	fullPrompt := fmt.Sprintf("%s\n\nINPUT:\nHex Sample: %X\nProtocol Hints: %s",
 		string(systemPrompt), rawSample, contextHint)
 
-	return s.requestAndRegister(fullPrompt, rawSample[0])
+	return s.requestAndRegister(fullPrompt, signature)
 }
 
-func (s *DiscoveryService) RepairParser(protocolID string, faultyCode string, errorMsg string, rawSample []byte) (string, error) {
+func (s *DiscoveryService) RepairParser(protocolID string, faultyCode string, errorMsg string, rawSample []byte, signature []byte) (string, error) {
 	fmt.Printf("🔧 Repair Mode [%s]: Fixing protocol %s...\n", s.Config.Provider, protocolID)
 
 	absPath, _ := filepath.Abs("agents/system_prompt.md")
@@ -77,10 +80,14 @@ func (s *DiscoveryService) RepairParser(protocolID string, faultyCode string, er
 	fullPrompt := fmt.Sprintf("%s\n\n### ERROR TO FIX\nYou previously generated code that failed.\n\nFAULTY CODE:\n```go\n%s\n```\n\nERROR MESSAGE:\n%s\n\nINPUT DATA (Hex): %X\n\nPlease fix the code and return only the valid Go code.",
 		string(systemPrompt), faultyCode, errorMsg, rawSample)
 
-	return s.requestAndRegister(fullPrompt, rawSample[0])
+	if len(signature) == 0 {
+		signature = []byte{rawSample[0]}
+	}
+
+	return s.requestAndRegister(fullPrompt, signature)
 }
 
-func (s *DiscoveryService) requestAndRegister(prompt string, signature byte) (string, error) {
+func (s *DiscoveryService) requestAndRegister(prompt string, signature []byte) (string, error) {
 	var generatedCode string
 	var err error
 

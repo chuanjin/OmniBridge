@@ -84,11 +84,11 @@ func (m *ParserManager) ParseData(protocolID string, data []byte) (map[string]in
 
 // Manifest represents the persistent mapping of signatures to parser IDs
 type Manifest struct {
-	Bindings map[uint8]string `json:"bindings"`
+	Bindings map[string]string `json:"bindings"`
 }
 
 // SaveManifest writes the current dispatcher bindings to a JSON file
-func (m *ParserManager) SaveManifest(bindings map[uint8]string) error {
+func (m *ParserManager) SaveManifest(bindings map[string]string) error {
 	manifest := Manifest{Bindings: bindings}
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -100,12 +100,12 @@ func (m *ParserManager) SaveManifest(bindings map[uint8]string) error {
 }
 
 // LoadManifest reads the manifest.json and returns the bindings
-func (m *ParserManager) LoadManifest() (map[uint8]string, error) {
+func (m *ParserManager) LoadManifest() (map[string]string, error) {
 	path := filepath.Join(m.storagePath, "manifest.json")
 
 	// If file doesn't exist, return empty map (common on first run)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return make(map[uint8]string), nil
+		return make(map[string]string), nil
 	}
 
 	data, err := ioutil.ReadFile(path)
