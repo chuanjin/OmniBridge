@@ -84,11 +84,21 @@ func main() {
 	// 0x55, 0xAA: NEW! Multi-byte signature.
 	// 0x2A: Known from previous tests (will trigger repair/discovery if not in storage)
 	incomingStream := [][]byte{
-		{0x01, 0x64},                   // Single-byte match
-		{0x41, 0x0C, 0x1A, 0xF8},       // REAL! OBD-II Engine RPM (1726 RPM)
+		{0x01, 0x64},                   // Single-byte match (Legacy Engine_System)
+		{0x41, 0x0C, 0x1A, 0xF8},       // Engine RPM (1726 RPM)
+		{0x41, 0x04, 0x7F},             // Engine Load (49%)
+		{0x41, 0x05, 0x5A},             // Coolant Temp (50°C)
+		{0x41, 0x0D, 0x4B},             // Vehicle Speed (75 km/h)
+		{0x41, 0x10, 0x0D, 0xAC},       // MAF Air Flow (35.00 g/s)
+		{0x41, 0x11, 0xCC},             // Throttle Position (80%)
+		{0x41, 0x0B, 0x64},             // Intake Pressure (100 kPa)
+		{0x41, 0x0F, 0x3C},             // Intake Temp (20°C)
+		{0x41, 0x21, 0x04, 0xD2},       // MIL Distance (1234 km)
+		{0x41, 0x2F, 0x7F},             // Fuel Level (49%)
+		{0x41, 0x33, 0x65},             // Baro Pressure (101 kPa)
 		{0x55, 0xAA, 0x03, 0xE8, 0xFF}, // MULTI-BYTE Signature - Will trigger Discovery
-		{0x2A, 0x01, 0xF4},             // Known or Discovery (added 0xF4 to make it 3 bytes)
-		{0x99, 0xFF, 0x00, 0x01},       // NEW Signature - Will test automated extraction
+		{0x2A, 0x01, 0xF4},             // Known or Discovery
+		{0x99, 0xFF, 0x00, 0x01},       // NEW Signature
 	}
 
 	fmt.Println("🚀 OmniBridge Gateway Started")

@@ -1,3 +1,5 @@
+//go:build ignore
+
 package dynamic
 
 // Signature: 01
