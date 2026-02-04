@@ -27,6 +27,10 @@ func (d *Dispatcher) GetBindings() map[string]string {
 	return copy
 }
 
+func (d *Dispatcher) GetManager() *ParserManager {
+	return d.manager
+}
+
 func NewDispatcher(mgr *ParserManager) *Dispatcher {
 	return &Dispatcher{
 		manager: mgr,

@@ -49,6 +49,8 @@ func main() {
 	provider := flag.String("provider", "gemini", "LLM Provider (gemini, ollama)")
 	model := flag.String("model", "", "Model Name (default: gemini-2.0-flash for gemini, deepseek-coder:1.3b for ollama)")
 	endpoint := flag.String("endpoint", "", "API Endpoint")
+	mode := flag.String("mode", "simulate", "Mode (simulate, server)")
+	addr := flag.String("addr", ":8080", "TCP Server Address (only used in server mode)")
 	flag.Parse()
 
 	// Set defaults based on provider if not specified
@@ -77,12 +79,19 @@ func main() {
 	}
 	discovery := parser.NewDiscoveryService(dispatcher, mgr, cfg)
 
-	// 3. Pre-bind is no longer needed here as it's loaded from storage/Engine_System.go
+	// 3. Mode selection
+	if *mode == "server" {
+		srv := parser.NewTCPServer(*addr, dispatcher, discovery)
+		if err := srv.ListenAndServe(); err != nil {
+			log.Fatalf("❌ Server failed: %v", err)
+		}
+		return
+	}
 
-	// 4. Simulated Data Stream
-	// 0x01: Known Engine data
-	// 0x55, 0xAA: NEW! Multi-byte signature.
-	// 0x2A: Known from previous tests (will trigger repair/discovery if not in storage)
+	// 4. Simulated Data Stream (Original Loop)
+	fmt.Println("🚀 OmniBridge Gateway Started (SIMULATION MODE)")
+	fmt.Println("--------------------------------------------")
+
 	incomingStream := [][]byte{
 		{0x01, 0x64},                   // Single-byte match (Legacy Engine_System)
 		{0x41, 0x0C, 0x1A, 0xF8},       // Engine RPM (1726 RPM)
@@ -100,9 +109,6 @@ func main() {
 		{0x2A, 0x01, 0xF4},             // Known or Discovery
 		{0x99, 0xFF, 0x00, 0x01},       // NEW Signature
 	}
-
-	fmt.Println("🚀 OmniBridge Gateway Started")
-	fmt.Println("--------------------------------------------")
 
 	for _, raw := range incomingStream {
 		// Attempt to parse using cached/known logic
