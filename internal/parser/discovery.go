@@ -28,6 +28,8 @@ type DiscoveryConfig struct {
 	Model       string // e.g., "llama3" or "deepseek-coder"
 	ApiKey      string // Optional for local, required for cloud
 	PrivacyMode bool   // If true, masks potential PII before sending
+	MaxRetries  int    // Maximum number of retries for LLM calls
+	RetryDelay  time.Duration
 }
 
 type OllamaRequest struct {
@@ -92,15 +94,34 @@ func (s *DiscoveryService) requestAndRegister(prompt string, signature []byte) (
 	var generatedCode string
 	var err error
 
-	// 3. Route to provider (Ollama/Cloud)
-	if s.Config.Provider == "ollama" {
-		generatedCode, err = s.callOllama(prompt)
-	} else {
-		generatedCode, err = s.callCloud(prompt)
+	maxRetries := s.Config.MaxRetries
+	if maxRetries <= 0 {
+		maxRetries = 1 // Default to at least one attempt
+	}
+	retryDelay := s.Config.RetryDelay
+	if retryDelay <= 0 {
+		retryDelay = 2 * time.Second // Default initial delay
 	}
 
-	if err != nil {
-		return "", err
+	for i := 0; i < maxRetries; i++ {
+		// 3. Route to provider (Ollama/Cloud)
+		if s.Config.Provider == "ollama" {
+			generatedCode, err = s.callOllama(prompt)
+		} else {
+			generatedCode, err = s.callCloud(prompt)
+		}
+
+		if err == nil {
+			break
+		}
+
+		if i < maxRetries-1 {
+			fmt.Printf("⚠️ LLM request failed (attempt %d/%d): %v. Retrying in %v...\n", i+1, maxRetries, err, retryDelay)
+			time.Sleep(retryDelay)
+			retryDelay *= 2 // Exponential backoff
+		} else {
+			return "", fmt.Errorf("all LLM attempts failed: %v", err)
+		}
 	}
 
 	// 4. Extract Signature from code if it exists (// Signature: 01AA)
@@ -150,13 +171,24 @@ func (s *DiscoveryService) callOllama(prompt string) (string, error) {
 	fmt.Println("⏳ LLM is thinking (this may take a minute)...")
 	resp, err := s.httpClient.Post(s.Config.Endpoint, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("ollama connection failed: %v", err)
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return "", fmt.Errorf("ollama error (status %d): %s", resp.StatusCode, string(body))
+	}
+
 	body, _ := ioutil.ReadAll(resp.Body)
 	var ollamaResp OllamaResponse
-	json.Unmarshal(body, &ollamaResp)
+	if err := json.Unmarshal(body, &ollamaResp); err != nil {
+		return "", fmt.Errorf("failed to decode ollama response: %v", err)
+	}
+
+	if ollamaResp.Response == "" {
+		return "", fmt.Errorf("ollama returned empty response")
+	}
 
 	return ollamaResp.Response, nil
 }
@@ -187,9 +219,9 @@ func (s *DiscoveryService) callCloud(prompt string) (string, error) {
 	}
 
 	jsonData, _ := json.Marshal(payload)
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := s.httpClient.Post(url, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("gemini connection failed: %v", err)
 	}
 	defer resp.Body.Close()
 
