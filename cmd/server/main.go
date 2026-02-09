@@ -4,17 +4,38 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"log"
+	"os"
 
+	"github.com/chuanjin/OmniBridge/internal/logger"
 	"github.com/chuanjin/OmniBridge/internal/parser"
 	"github.com/joho/godotenv"
+	"go.uber.org/zap"
 )
 
 func main() {
+	// Define flags
+	provider := flag.String("provider", "gemini", "LLM Provider (gemini, ollama)")
+	model := flag.String("model", "", "Model Name (default: gemini-2.0-flash for gemini, deepseek-coder:1.3b for ollama)")
+	endpoint := flag.String("endpoint", "", "API Endpoint")
+	mode := flag.String("mode", "simulate", "Mode (simulate, server)")
+	addr := flag.String("addr", ":8080", "TCP Server Address (only used in server mode)")
+	debug := flag.Bool("debug", false, "Enable debug logging")
+
+	flag.Parse()
+
+	// Initialize Logger
+	if err := logger.Init(*debug); err != nil {
+		fmt.Printf("Failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+	defer logger.Sync()
+
+	logger.Info("Starting OmniBridge Gateway...")
+
 	// Load .env file
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("Note: No .env file found, using system environment variables")
+		logger.Warn("No .env file found, using system environment variables")
 	}
 
 	// 1. Initialize the Manager (Persistence) and Dispatcher (Routing)
@@ -24,7 +45,7 @@ func main() {
 	// Load stored parsers and auto-bind those that have a // Signature: comment
 	bindings, err := mgr.LoadSavedParsers()
 	if err != nil {
-		log.Printf("Note: Error loading parsers: %v", err)
+		logger.Error("Error loading parsers", zap.Error(err))
 	}
 
 	dispatcher := parser.NewDispatcher(mgr)
@@ -33,7 +54,7 @@ func main() {
 	for name, sigHex := range bindings {
 		sig := hexToBytes(sigHex)
 		dispatcher.Bind(sig, name)
-		fmt.Printf("📦 Auto-Bound (from source): 0x%X -> %s\n", sig, name)
+		logger.Info("Auto-Bound parser", zap.String("signature", fmt.Sprintf("0x%X", sig)), zap.String("protocol", name))
 	}
 
 	// Also restore from manifest.json for any that don't have source signatures
@@ -44,14 +65,6 @@ func main() {
 			dispatcher.Bind(sig, name) // Will overwrite if already bound, which is fine
 		}
 	}
-
-	// 2. Configure Local/Cloud LLM via CLI flags
-	provider := flag.String("provider", "gemini", "LLM Provider (gemini, ollama)")
-	model := flag.String("model", "", "Model Name (default: gemini-2.0-flash for gemini, deepseek-coder:1.3b for ollama)")
-	endpoint := flag.String("endpoint", "", "API Endpoint")
-	mode := flag.String("mode", "simulate", "Mode (simulate, server)")
-	addr := flag.String("addr", ":8080", "TCP Server Address (only used in server mode)")
-	flag.Parse()
 
 	// Set defaults based on provider if not specified
 	effectiveModel := *model
@@ -83,13 +96,13 @@ func main() {
 	if *mode == "server" {
 		srv := parser.NewTCPServer(*addr, dispatcher, discovery)
 		if err := srv.ListenAndServe(); err != nil {
-			log.Fatalf("❌ Server failed: %v", err)
+			logger.Fatal("Server failed", zap.Error(err))
 		}
 		return
 	}
 
 	// 4. Simulated Data Stream (Original Loop)
-	fmt.Println("🚀 OmniBridge Gateway Started (SIMULATION MODE)")
+	logger.Info("OmniBridge Gateway Started (SIMULATION MODE)")
 	fmt.Println("--------------------------------------------")
 
 	incomingStream := [][]byte{
@@ -116,12 +129,13 @@ func main() {
 
 		// 5. SELF-HEALING: If ingest fails for a KNOWN protocol (e.g., compile error), try to repair it
 		if err != nil && proto != "" {
-			fmt.Printf("🔧 Detected error in [0x%X] (%s): %v. Attempting repair...\n", raw[0], proto, err)
+			logger.Warn("Detected error in protocol", zap.String("protocol", proto), zap.Error(err))
+			logger.Info("Attempting repair", zap.String("protocol", proto))
 
 			// Get the faulty code from the manager to send back to the AI
 			faultyCode, exists := mgr.GetParserCode(proto)
 			if !exists {
-				fmt.Printf("❌ Could not find code for protocol %s to repair\n", proto)
+				logger.Error("Could not find code for protocol to repair", zap.String("protocol", proto))
 				continue
 			}
 
@@ -131,20 +145,20 @@ func main() {
 
 			_, repairErr := discovery.RepairParser(proto, faultyCode, err.Error(), raw, sig)
 			if repairErr != nil {
-				fmt.Printf("❌ Repair failed: %v\n", repairErr)
+				logger.Error("Repair failed", zap.Error(repairErr))
 				continue
 			}
 
 			// Re-attempt ingestion after repair
 			result, proto, err = dispatcher.Ingest(raw)
 			if err == nil {
-				fmt.Printf("✨ Protocol %s repaired successfully!\n", proto)
+				logger.Info("Protocol repaired successfully", zap.String("protocol", proto))
 			}
 		}
 
 		// 6. DISCOVERY: If protocol is entirely unknown
 		if err != nil && proto == "" {
-			fmt.Printf("🔍 Error Ingesting [0x%X]: %v. Consulting Local AI...\n", raw[0], err)
+			logger.Info("Unknown signature, consulting AI", zap.String("signature", fmt.Sprintf("0x%X", raw[0])))
 
 			// Trigger Discovery Mode
 			// Trigger Discovery Mode WITHOUT hardcoded signatures
@@ -153,17 +167,17 @@ func main() {
 			newName, discErr := discovery.DiscoverNewProtocol(raw, nil, context)
 
 			if discErr != nil {
-				fmt.Printf("❌ Discovery failed: %v\n", discErr)
+				logger.Error("Discovery failed", zap.Error(discErr))
 				continue
 			}
 
 			// Re-attempt Ingestion
 			result, proto, _ = dispatcher.Ingest(raw)
-			fmt.Printf("✨ New Protocol Learned & Persistent: %s\n", newName)
+			logger.Info("New Protocol Learned", zap.String("protocol", newName))
 		}
 
 		if err == nil {
-			fmt.Printf("✅ [SUCCESS] Protocol: %-15s | Data: %v\n", proto, result)
+			logger.Info("Success", zap.String("protocol", proto), zap.Any("data", result))
 		}
 	}
 

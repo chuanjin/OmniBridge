@@ -12,6 +12,9 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/chuanjin/OmniBridge/internal/logger"
+	"go.uber.org/zap"
 )
 
 // DiscoveryService handles the interaction with LLMs to generate new parsers
@@ -55,7 +58,7 @@ func (s *DiscoveryService) DiscoverNewProtocol(rawSample []byte, signature []byt
 	if len(signature) == 0 {
 		signature = []byte{rawSample[0]}
 	}
-	fmt.Printf("🔒 Discovery Mode [%s]: Analyzing signature 0x%X...\n", s.Config.Provider, signature)
+	logger.Info("Discovery Mode: Analyzing signature", zap.String("provider", s.Config.Provider), zap.String("signature", fmt.Sprintf("0x%X", signature)))
 
 	// 1. Load System Prompt from the agents folder
 	absPath, _ := filepath.Abs("agents/system_prompt.md")
@@ -72,7 +75,7 @@ func (s *DiscoveryService) DiscoverNewProtocol(rawSample []byte, signature []byt
 }
 
 func (s *DiscoveryService) RepairParser(protocolID string, faultyCode string, errorMsg string, rawSample []byte, signature []byte) (string, error) {
-	fmt.Printf("🔧 Repair Mode [%s]: Fixing protocol %s...\n", s.Config.Provider, protocolID)
+	logger.Info("Repair Mode: Fixing protocol", zap.String("provider", s.Config.Provider), zap.String("protocol", protocolID))
 
 	absPath, _ := filepath.Abs("agents/system_prompt.md")
 	systemPrompt, err := ioutil.ReadFile(absPath)
@@ -116,7 +119,7 @@ func (s *DiscoveryService) requestAndRegister(prompt string, signature []byte) (
 		}
 
 		if i < maxRetries-1 {
-			fmt.Printf("⚠️ LLM request failed (attempt %d/%d): %v. Retrying in %v...\n", i+1, maxRetries, err, retryDelay)
+			logger.Warn("LLM request failed, retrying", zap.Int("attempt", i+1), zap.Int("max_retries", maxRetries), zap.Error(err), zap.Duration("retry_delay", retryDelay))
 			time.Sleep(retryDelay)
 			retryDelay *= 2 // Exponential backoff
 		} else {
@@ -168,7 +171,7 @@ func (s *DiscoveryService) callOllama(prompt string) (string, error) {
 	}
 
 	jsonData, _ := json.Marshal(reqBody)
-	fmt.Println("⏳ LLM is thinking (this may take a minute)...")
+	logger.Debug("LLM is thinking...")
 	resp, err := s.httpClient.Post(s.Config.Endpoint, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("ollama connection failed: %v", err)
