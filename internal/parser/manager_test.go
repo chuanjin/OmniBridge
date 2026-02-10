@@ -11,7 +11,7 @@ func TestParserManager_RegisterAndLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	mgr := NewParserManager(tmpDir, "")
 
@@ -61,7 +61,7 @@ func Parse(data []byte) map[string]interface{} {
 
 func TestParserManager_Manifest(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "manifest_test")
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	mgr := NewParserManager(tmpDir, "")
 
@@ -92,7 +92,7 @@ func TestParserManager_Manifest(t *testing.T) {
 
 func TestParserManager_Manifest_Empty(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "manifest_empty_test")
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	mgr := NewParserManager(tmpDir, "")
 

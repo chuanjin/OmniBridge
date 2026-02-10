@@ -29,7 +29,11 @@ func (s *TCPServer) ListenAndServe() error {
 	if err != nil {
 		return fmt.Errorf("failed to listen on %s: %v", s.addr, err)
 	}
-	defer listener.Close()
+	defer func() {
+		if err := listener.Close(); err != nil {
+			logger.Error("Failed to close listener", zap.Error(err))
+		}
+	}()
 
 	logger.Info("TCP Server listening", zap.String("address", s.addr))
 
@@ -44,7 +48,11 @@ func (s *TCPServer) ListenAndServe() error {
 }
 
 func (s *TCPServer) handleConnection(conn net.Conn) {
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			logger.Error("Failed to close connection", zap.Error(err))
+		}
+	}()
 	logger.Info("New connection", zap.String("remote_addr", conn.RemoteAddr().String()))
 
 	buffer := make([]byte, 1024)
@@ -106,9 +114,9 @@ func (s *TCPServer) handleConnection(conn net.Conn) {
 		if err == nil {
 			logger.Info("Success", zap.String("protocol", proto), zap.Any("data", result))
 			// Optionally send result back to client or log it
-			fmt.Fprintf(conn, "Parsed (%s): %v\n", proto, result)
+			_, _ = fmt.Fprintf(conn, "Parsed (%s): %v\n", proto, result)
 		} else {
-			fmt.Fprintf(conn, "Error: %v\n", err)
+			_, _ = fmt.Fprintf(conn, "Error: %v\n", err)
 		}
 	}
 	logger.Info("Connection closed", zap.String("remote_addr", conn.RemoteAddr().String()))

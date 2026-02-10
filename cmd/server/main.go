@@ -40,7 +40,9 @@ func main() {
 
 	// 1. Initialize the Manager (Persistence) and Dispatcher (Routing)
 	mgr := parser.NewParserManager("./storage", "./seeds")
-	mgr.SeedParsers()
+	if err := mgr.SeedParsers(); err != nil {
+		logger.Error("Failed to seed parsers", zap.Error(err))
+	}
 
 	// Load stored parsers and auto-bind those that have a // Signature: comment
 	bindings, err := mgr.LoadSavedParsers()

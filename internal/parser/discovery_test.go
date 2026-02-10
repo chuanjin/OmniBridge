@@ -35,19 +35,17 @@ func Parse(data []byte) map[string]interface{} {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockResponse)
+		_ = json.NewEncoder(w).Encode(mockResponse)
 	}))
 	defer server.Close()
 
 	// Create agents directory for system_prompt.md if it doesn't exist
-	err := os.MkdirAll("agents", 0755)
-	if err != nil {
+	if err := os.MkdirAll("agents", 0755); err != nil {
 		t.Fatalf("Failed to create agents dir: %v", err)
 	}
-	defer os.RemoveAll("agents")
+	defer func() { _ = os.RemoveAll("agents") }()
 
-	err = os.WriteFile("agents/system_prompt.md", []byte("System prompt context"), 0644)
-	if err != nil {
+	if err := os.WriteFile("agents/system_prompt.md", []byte("System prompt context"), 0644); err != nil {
 		t.Fatalf("Failed to write system_prompt.md: %v", err)
 	}
 
@@ -57,12 +55,12 @@ func Parse(data []byte) map[string]interface{} {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	storagePath := filepath.Join(tempDir, "storage")
 	seedPath := filepath.Join(tempDir, "seed")
-	os.MkdirAll(storagePath, 0755)
-	os.MkdirAll(seedPath, 0755)
+	_ = os.MkdirAll(storagePath, 0755)
+	_ = os.MkdirAll(seedPath, 0755)
 
 	manager := NewParserManager(storagePath, seedPath)
 	dispatcher := NewDispatcher(manager)
@@ -148,24 +146,27 @@ func Parse(data []byte) map[string]interface{} {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockResponse)
+		_ = json.NewEncoder(w).Encode(mockResponse)
 	}))
 	defer server.Close()
 
-	os.Setenv("GEMINI_API_KEY", "test-key")
-	defer os.Unsetenv("GEMINI_API_KEY")
+	_ = os.Setenv("GEMINI_API_KEY", "test-key")
+	defer func() { _ = os.Unsetenv("GEMINI_API_KEY") }()
 
 	// Setup agents
-	err := os.MkdirAll("agents", 0755)
-	if err != nil {
+	if err := os.MkdirAll("agents", 0755); err != nil {
 		t.Fatalf("Failed to create agents dir: %v", err)
 	}
-	defer os.RemoveAll("agents")
-	os.WriteFile("agents/system_prompt.md", []byte("System prompt context"), 0644)
+	defer func() { _ = os.RemoveAll("agents") }()
+
+	if err := os.WriteFile("agents/system_prompt.md", []byte("System prompt context"), 0644); err != nil {
+		t.Fatalf("Failed to write system_prompt.md: %v", err)
+	}
 
 	// 2. Setup DiscoveryService
 	tempDir, _ := os.MkdirTemp("", "omnibridge_gemini_test")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
 	manager := NewParserManager(filepath.Join(tempDir, "storage"), filepath.Join(tempDir, "seed"))
 	dispatcher := NewDispatcher(manager)
 
@@ -207,7 +208,7 @@ func TestDiscoveryService_RetryLogic(t *testing.T) {
 		attempts++
 		if attempts < 3 {
 			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprint(w, "transient error")
+			_, _ = fmt.Fprint(w, "transient error")
 			return
 		}
 
@@ -219,20 +220,23 @@ func Parse(data []byte) map[string]interface{} {
 }`,
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockResponse)
+		_ = json.NewEncoder(w).Encode(mockResponse)
 	}))
 	defer server.Close()
 
 	// Setup agents
-	err := os.MkdirAll("agents", 0755)
-	if err != nil {
+	if err := os.MkdirAll("agents", 0755); err != nil {
 		t.Fatalf("Failed to create agents dir: %v", err)
 	}
-	defer os.RemoveAll("agents")
-	os.WriteFile("agents/system_prompt.md", []byte("System prompt context"), 0644)
+	defer func() { _ = os.RemoveAll("agents") }()
+
+	if err := os.WriteFile("agents/system_prompt.md", []byte("System prompt context"), 0644); err != nil {
+		t.Fatalf("Failed to write system_prompt.md: %v", err)
+	}
 
 	tempDir, _ := os.MkdirTemp("", "omnibridge_retry_test")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
 	manager := NewParserManager(filepath.Join(tempDir, "storage"), filepath.Join(tempDir, "seed"))
 	dispatcher := NewDispatcher(manager)
 

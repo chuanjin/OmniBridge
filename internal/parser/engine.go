@@ -17,7 +17,7 @@ func NewEngine() *Engine {
 func (e *Engine) Execute(rawData []byte, goCode string) (map[string]interface{}, error) {
 	// Create a fresh interpreter for EACH execution to avoid package/import conflicts
 	i := interp.New(interp.Options{})
-	i.Use(stdlib.Symbols)
+	_ = i.Use(stdlib.Symbols)
 
 	_, err := i.Eval(goCode)
 	if err != nil {

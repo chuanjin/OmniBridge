@@ -74,7 +74,7 @@ func (d *Dispatcher) Ingest(data []byte) (map[string]interface{}, string, error)
 		if len(data) < maxLen {
 			maxLen = len(data)
 		}
-		return nil, "", fmt.Errorf("unknown protocol signature: 0x%X...", data[:maxLen])
+		return nil, "", fmt.Errorf("unknown protocol signature: 0x%X", data[:maxLen])
 	}
 
 	// Use the manager to run the cached parser

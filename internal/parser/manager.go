@@ -3,7 +3,6 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -20,7 +19,7 @@ type ParserManager struct {
 
 func NewParserManager(storagePath string, seedPath string) *ParserManager {
 	if _, err := os.Stat(storagePath); os.IsNotExist(err) {
-		os.MkdirAll(storagePath, 0o755)
+		_ = os.MkdirAll(storagePath, 0o755)
 	}
 	return &ParserManager{
 		engine:      NewEngine(),
@@ -36,7 +35,7 @@ func (m *ParserManager) SeedParsers() error {
 		return nil
 	}
 
-	files, err := ioutil.ReadDir(m.seedPath)
+	files, err := os.ReadDir(m.seedPath)
 	if err != nil {
 		return nil // Ignore if seed path doesn't exist
 	}
@@ -44,10 +43,13 @@ func (m *ParserManager) SeedParsers() error {
 	for _, file := range files {
 		destPath := filepath.Join(m.storagePath, file.Name())
 		if _, err := os.Stat(destPath); os.IsNotExist(err) {
-			content, err := ioutil.ReadFile(filepath.Join(m.seedPath, file.Name()))
+			content, err := os.ReadFile(filepath.Join(m.seedPath, file.Name()))
 			if err == nil {
-				ioutil.WriteFile(destPath, content, 0o644)
-				fmt.Printf("🌱 Seeded parser: %s\n", file.Name())
+				if err := os.WriteFile(destPath, content, 0o644); err != nil {
+					fmt.Printf("Failed to write seed file %s: %v\n", file.Name(), err)
+				} else {
+					fmt.Printf("🌱 Seeded parser: %s\n", file.Name())
+				}
 			}
 		}
 	}
@@ -57,7 +59,7 @@ func (m *ParserManager) SeedParsers() error {
 // LoadSavedParsers reads all .go files from the storage folder on startup
 // Returns a map of ProtocolID -> SignatureHex
 func (m *ParserManager) LoadSavedParsers() (map[string]string, error) {
-	files, err := ioutil.ReadDir(m.storagePath)
+	files, err := os.ReadDir(m.storagePath)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +70,7 @@ func (m *ParserManager) LoadSavedParsers() (map[string]string, error) {
 	for _, file := range files {
 		if filepath.Ext(file.Name()) == ".go" {
 			protocolID := file.Name()[:len(file.Name())-3]
-			content, _ := ioutil.ReadFile(filepath.Join(m.storagePath, file.Name()))
+			content, _ := os.ReadFile(filepath.Join(m.storagePath, file.Name()))
 			code := string(content)
 			m.cache[protocolID] = code
 
@@ -90,7 +92,7 @@ func (m *ParserManager) RegisterParser(protocolID, code string) error {
 	defer m.mu.Unlock()
 
 	filename := filepath.Join(m.storagePath, protocolID+".go")
-	err := ioutil.WriteFile(filename, []byte(code), 0o644)
+	err := os.WriteFile(filename, []byte(code), 0o644)
 	if err != nil {
 		return err
 	}
@@ -135,7 +137,7 @@ func (m *ParserManager) SaveManifest(bindings map[string]string) error {
 	}
 
 	path := filepath.Join(m.storagePath, "manifest.json")
-	return ioutil.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o644)
 }
 
 // LoadManifest reads the manifest.json and returns the bindings
@@ -147,7 +149,7 @@ func (m *ParserManager) LoadManifest() (map[string]string, error) {
 		return make(map[string]string), nil
 	}
 
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

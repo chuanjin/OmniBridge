@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -62,7 +62,7 @@ func (s *DiscoveryService) DiscoverNewProtocol(rawSample []byte, signature []byt
 
 	// 1. Load System Prompt from the agents folder
 	absPath, _ := filepath.Abs("agents/system_prompt.md")
-	systemPrompt, err := ioutil.ReadFile(absPath)
+	systemPrompt, err := os.ReadFile(absPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to load system_prompt.md: %v", err)
 	}
@@ -78,7 +78,7 @@ func (s *DiscoveryService) RepairParser(protocolID string, faultyCode string, er
 	logger.Info("Repair Mode: Fixing protocol", zap.String("provider", s.Config.Provider), zap.String("protocol", protocolID))
 
 	absPath, _ := filepath.Abs("agents/system_prompt.md")
-	systemPrompt, err := ioutil.ReadFile(absPath)
+	systemPrompt, err := os.ReadFile(absPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to load system_prompt.md: %v", err)
 	}
@@ -159,7 +159,9 @@ func (s *DiscoveryService) requestAndRegister(prompt string, signature []byte) (
 	s.dispatcher.Bind(finalSig, protocolID)
 
 	// Persist the new binding to the manifest file
-	s.manager.SaveManifest(s.dispatcher.GetBindings())
+	if err := s.manager.SaveManifest(s.dispatcher.GetBindings()); err != nil {
+		logger.Error("Failed to save manifest", zap.Error(err))
+	}
 	return protocolID, nil
 }
 
@@ -176,14 +178,18 @@ func (s *DiscoveryService) callOllama(prompt string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("ollama connection failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Error("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("ollama error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	var ollamaResp OllamaResponse
 	if err := json.Unmarshal(body, &ollamaResp); err != nil {
 		return "", fmt.Errorf("failed to decode ollama response: %v", err)
@@ -226,10 +232,14 @@ func (s *DiscoveryService) callCloud(prompt string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("gemini connection failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Error("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("gemini api error (%d): %s", resp.StatusCode, string(body))
 	}
 
