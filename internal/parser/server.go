@@ -93,22 +93,34 @@ func (s *TCPServer) handleConnection(conn net.Conn) {
 
 		// 2. DISCOVERY: If protocol is entirely unknown
 		if err != nil && proto == "" {
-			logger.Info("Unknown signature, consulting AI", zap.String("signature", fmt.Sprintf("0x%X", raw[0])))
+			// Extract a tentative signature (e.g. first byte) to key the discovery process
+			sig := []byte{raw[0]}
+			sigHex := fmt.Sprintf("0x%X", sig)
 
-			// In a real server, we might want to pass more context hints if available
-			context := "Remote incoming binary data stream."
-			newName, discErr := s.discovery.DiscoverNewProtocol(raw, nil, context)
+			if s.discovery.StartDiscovery(sig) {
+				logger.Info("Unknown signature, starting BACKGROUND AI discovery", zap.String("signature", sigHex))
 
-			if discErr != nil {
-				logger.Error("Discovery failed", zap.Error(discErr))
-				continue
+				// Launch async discovery
+				go func(sample []byte, signature []byte) {
+					defer s.discovery.FinishDiscovery(signature)
+
+					context := "Remote incoming binary data stream."
+					newName, discErr := s.discovery.DiscoverNewProtocol(sample, signature, context)
+
+					if discErr != nil {
+						logger.Error("Async Discovery failed", zap.String("signature", sigHex), zap.Error(discErr))
+						return
+					}
+					logger.Info("Async Discovery: New Protocol Learned", zap.String("protocol", newName))
+				}(append([]byte(nil), raw...), sig) // Copy raw to avoid race conditions with buffer reuse
+
+			} else {
+				logger.Debug("Discovery already in progress", zap.String("signature", sigHex))
 			}
 
-			// Re-attempt Ingestion
-			result, proto, err = s.dispatcher.Ingest(raw)
-			if err == nil {
-				logger.Info("New Protocol Learned", zap.String("protocol", newName))
-			}
+			// Do NOT re-attempt ingestion here to avoid blocking.
+			// The packet is effectively dropped or "skipped" until the parser is ready.
+			continue
 		}
 
 		if err == nil {

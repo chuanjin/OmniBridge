@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chuanjin/OmniBridge/internal/logger"
@@ -23,6 +24,10 @@ type DiscoveryService struct {
 	manager    *ParserManager
 	httpClient *http.Client
 	Config     DiscoveryConfig
+
+	// Async discovery state tracking
+	pending map[string]bool
+	mu      sync.Mutex
 }
 
 type DiscoveryConfig struct {
@@ -51,7 +56,35 @@ func NewDiscoveryService(d *Dispatcher, m *ParserManager, cfg DiscoveryConfig) *
 		manager:    m,
 		httpClient: &http.Client{Timeout: 600 * time.Second},
 		Config:     cfg,
+		pending:    make(map[string]bool),
 	}
+}
+
+// IsDiscovering checks if a discovery is already in progress for the given signature.
+func (s *DiscoveryService) IsDiscovering(signature []byte) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pending[fmt.Sprintf("%X", signature)]
+}
+
+// StartDiscovery attempts to mark a signature for discovery.
+// Returns true if successfully marked (started), false if already in progress.
+func (s *DiscoveryService) StartDiscovery(signature []byte) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := fmt.Sprintf("%X", signature)
+	if s.pending[key] {
+		return false
+	}
+	s.pending[key] = true
+	return true
+}
+
+// FinishDiscovery clears the pending status for a signature.
+func (s *DiscoveryService) FinishDiscovery(signature []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.pending, fmt.Sprintf("%X", signature))
 }
 
 func (s *DiscoveryService) DiscoverNewProtocol(rawSample []byte, signature []byte, contextHint string) (string, error) {
