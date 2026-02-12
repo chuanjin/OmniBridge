@@ -1,9 +1,10 @@
 package parser
 
 import (
-	"fmt"
+	"fmt" // Keep fmt as it's used
 	"io"
 	"net"
+	"time"
 
 	"github.com/chuanjin/OmniBridge/internal/logger"
 	"go.uber.org/zap"
@@ -97,30 +98,30 @@ func (s *TCPServer) handleConnection(conn net.Conn) {
 			sig := []byte{raw[0]}
 			sigHex := fmt.Sprintf("0x%X", sig)
 
-			if s.discovery.StartDiscovery(sig) {
-				logger.Info("Unknown signature, starting BACKGROUND AI discovery", zap.String("signature", sigHex))
-
-				// Launch async discovery
-				go func(sample []byte, signature []byte) {
-					defer s.discovery.FinishDiscovery(signature)
-
-					context := "Remote incoming binary data stream."
-					newName, discErr := s.discovery.DiscoverNewProtocol(sample, signature, context)
-
-					if discErr != nil {
-						logger.Error("Async Discovery failed", zap.String("signature", sigHex), zap.Error(discErr))
-						return
-					}
-					logger.Info("Async Discovery: New Protocol Learned", zap.String("protocol", newName))
-				}(append([]byte(nil), raw...), sig) // Copy raw to avoid race conditions with buffer reuse
-
+			// Attempt to run discovery synchronously for this connection
+			// This blocks this specific client but ensures the first packet is not dropped.
+			if s.discovery.IsDiscovering(sig) {
+				logger.Info("Discovery already in progress, waiting...", zap.String("signature", sigHex))
+				// In a real implementation, we might want a condition variable or a loop here.
+				// For now, we'll just wait a bit and retry ingest, or drop if it takes too long.
+				time.Sleep(2 * time.Second)
 			} else {
-				logger.Debug("Discovery already in progress", zap.String("signature", sigHex))
+				logger.Info("Unknown signature, starting BLOCKING AI discovery", zap.String("signature", sigHex))
+				context := "Remote incoming binary data stream."
+				newName, discErr := s.discovery.DiscoverNewProtocol(raw, sig, context)
+				if discErr != nil {
+					logger.Error("Discovery failed", zap.String("signature", sigHex), zap.Error(discErr))
+					continue
+				}
+				logger.Info("Discovery Success: New Protocol Learned", zap.String("protocol", newName))
 			}
 
-			// Do NOT re-attempt ingestion here to avoid blocking.
-			// The packet is effectively dropped or "skipped" until the parser is ready.
-			continue
+			// Re-attempt ingestion after discovery
+			result, proto, err = s.dispatcher.Ingest(raw)
+			if err != nil {
+				// If it still fails, then we really can't handle it
+				logger.Error("Still unable to parse after discovery", zap.Error(err))
+			}
 		}
 
 		if err == nil {

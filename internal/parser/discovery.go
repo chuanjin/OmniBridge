@@ -299,27 +299,32 @@ func (s *DiscoveryService) callCloud(prompt string) (string, error) {
 
 func sanitizeAiCode(input string) string {
 	// 1. Force remove any "Here is your code" or preamble
-	// We look for the first occurrence of "package dynamic"
-	start := strings.Index(input, "package dynamic")
-	if start != -1 {
-		input = input[start:]
+	// Detect where the package declaration starts
+	pkgIdx := strings.Index(input, "package ")
+	if pkgIdx != -1 {
+		input = input[pkgIdx:]
 	}
 
-	// 2. Clean up common AI hallucinations in the function name
+	// 2. Ensure package is "dynamic"
+	// Replace "package something" with "package dynamic"
+	rePkg := regexp.MustCompile(`^package\s+\w+`)
+	if rePkg.MatchString(input) {
+		input = rePkg.ReplaceAllString(input, "package dynamic")
+	} else {
+		// If no package decl found at start, prepend it
+		input = "package dynamic\n\n" + input
+	}
+
+	// 3. Clean up common AI hallucinations in the function name
 	// Some models try to name it ParseID99 or ParseHex...
 	// We force it back to 'Parse' using regex
 	reFuncName := regexp.MustCompile(`func [A-Za-z0-9_]+\(`)
 	input = reFuncName.ReplaceAllString(input, "func Parse(")
 
-	// 3. The "Brace Matcher": Only keep from 'package dynamic' to the LAST '}'
+	// 4. The "Brace Matcher": Only keep from start to the LAST '}'
 	lastBrace := strings.LastIndex(input, "}")
 	if lastBrace != -1 {
 		input = input[:lastBrace+1]
-	}
-
-	// 4. Final safety check: if the AI skipped 'package dynamic', prepend it
-	if !strings.Contains(input, "package dynamic") {
-		input = "package dynamic\n\n" + input
 	}
 
 	return strings.TrimSpace(input)
