@@ -1,45 +1,47 @@
 # 🌉 OmniBridge
 
-OmniBridge is a dynamic binary protocol gateway that leverages Large Language Models (LLMs) to automatically discover and parse unknown data signatures in real-time. It provides a "Fast Path" for known protocols using high-performance Go-based parsers and a "Discovery Mode" for learning new protocols on the fly.
+[![CI](https://github.com/chuanjin/OmniBridge/actions/workflows/ci.yml/badge.svg)](https://github.com/chuanjin/OmniBridge/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go)](https://go.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-## 🚀 Key Features
+**OmniBridge is an AI-native binary protocol gateway**: it parses known protocols at high speed and **learns unknown ones automatically** using an LLM, then persists the learned parser for future traffic.
 
-- **Dynamic Protocol Discovery**: Automatically detects unknown binary signatures and consults an LLM to generate parsing logic.
-- **Native Speed Execution**: LLM-generated Go code is executed via the `yaegi` interpreter at near-native speeds.
-- **Persistence**: Learned protocols are saved to disk and restored automatically on startup.
-- **Multi-LLM Support**: Supports local models via **Ollama** and cloud models via **Google Gemini**.
-- **Context-Aware Parsing**: Uses system prompts and data hints to improve the accuracy of generated parsers.
+> If your data streams are evolving faster than hand-written decoders, OmniBridge gives you a practical way to keep up.
 
-## 🏗️ Architecture
+---
 
-OmniBridge consists of several key components:
+## ✨ Why OmniBridge
 
-- **Dispatcher**: Routes incoming data streams based on their first-byte signature.
-- **Parser Manager**: Manages the lifecycle of parsers, including registration, storage, and execution.
-- **Discovery Service**: The bridge to LLMs, responsible for generating new Go code when an unknown signature is encountered.
-- **Engine**: A high-performance execution environment for dynamic Go code.
+- ⚡ **Fast path first**: Known signatures route directly to existing parsers.
+- 🧠 **AI discovery mode**: Unknown packets trigger LLM-assisted parser generation.
+- 🔁 **Self-healing parsers**: If a learned parser fails at runtime, OmniBridge attempts automatic repair.
+- 💾 **Persistent learning**: Generated parsers are saved in `./storage` and reloaded on startup.
+- 🔌 **Provider flexibility**: Works with **Gemini** (cloud) and **Ollama** (local).
+- 🧪 **Tested core**: Includes unit tests for discovery, dispatcher, manager, and execution engine.
 
-### The Lifecycle of a Packet
+---
 
-1. **Ingest**: A raw byte stream arrives.
-2. **Dispatch**: The Dispatcher checks if the signature (first byte) is known.
-3. **Fast Path (Known)**: If known, the pre-compiled or previously learned parser is executed immediately.
-4. **Discovery Mode (Unknown)**:
-   - The Discovery Service sends the raw sample and context hints to the configured LLM.
-   - The LLM generates a valid Go `Parse` function.
-   - The code is sanitized, saved to `./storage`, and bound to the signature.
-   - The packet is re-ingested using the new parser.
+## 🏗️ How it works
 
-## 🛠️ Getting Started
+1. **Ingest** raw bytes from simulation mode or TCP server mode.
+2. **Dispatch** by signature (supports multi-byte signatures).
+3. **Parse on fast path** when a parser already exists.
+4. **Discover on miss** by asking the configured LLM to generate a Go `Parse` function.
+5. **Bind + persist** generated parser, then re-ingest the packet.
+6. **Repair automatically** if a known parser breaks on future packets.
 
-### Prerequisites
+---
 
-- **Go**: Version 1.25.5 or later.
-- **LLM Access**: 
-  - For **Gemini**: A valid `GEMINI_API_KEY` environment variable.
-  - For **Ollama**: A running Ollama instance with the desired model (e.g., `deepseek-coder:1.3b`).
+## 🚀 Quick Start
 
-### Installation
+### 1) Prerequisites
+
+- Go **1.25+**
+- One LLM provider:
+  - **Gemini**: set `GEMINI_API_KEY`
+  - **Ollama**: local Ollama server running
+
+### 2) Install
 
 ```bash
 git clone https://github.com/chuanjin/OmniBridge.git
@@ -47,37 +49,80 @@ cd OmniBridge
 go mod tidy
 ```
 
-### Configuration
+### 3) Configure environment
 
-Create a `.env` file in the root directory:
+Create a `.env` file:
 
 ```env
+# Needed only for Gemini provider
 GEMINI_API_KEY=your_api_key_here
 ```
 
-### Running the Server
-
-Start the OmniBridge gateway with CLI flags:
+### 4) Run in simulation mode (default)
 
 ```bash
 go run cmd/server/main.go --provider gemini --model gemini-2.0-flash
 ```
 
-Or using Ollama:
+Run with Ollama:
 
 ```bash
 go run cmd/server/main.go --provider ollama --model deepseek-coder:1.3b
 ```
 
-## 📁 Project Structure
+### 5) Run as TCP gateway
 
-- `cmd/server/`: Main application entry point.
-- `internal/parser/`: Core logic for dispatching, managing, and discovering protocols.
-- `internal/mcp/`: Model Context Protocol (MCP) handlers.
-- `agents/`: System prompts for the LLM.
-- `storage/`: Persistent storage for generated Go parsers and the manifest.
-- `examples/`: Sample usage and data streams.
+```bash
+go run cmd/server/main.go --mode server --addr :8080 --provider gemini --model gemini-2.0-flash
+```
+
+Send binary data to it from your client; OmniBridge will parse known signatures and discover unknown ones.
+
+---
+
+## 🐳 Docker
+
+Build and run:
+
+```bash
+docker build -t omnibridge .
+docker run --rm -p 8080:8080 --env GEMINI_API_KEY=$GEMINI_API_KEY omnibridge
+```
+
+---
+
+## 📁 Project layout
+
+- `cmd/server/` — CLI entrypoint (simulation + TCP server modes)
+- `internal/parser/` — dispatcher, discovery service, parser manager, dynamic engine
+- `internal/logger/` — structured logging setup
+- `agents/` — system prompt(s) used for parser generation
+- `seeds/` — built-in parser seeds loaded at startup
+- `examples/` — sample protocol data
+- `storage/` — learned parsers + manifest (created at runtime)
+
+---
+
+## 🧭 Current project status
+
+OmniBridge is actively evolving and already usable for experimentation/prototyping with mixed known/unknown binary streams.
+
+High-impact areas underway:
+
+- Better parser validation and safety hardening
+- Expanded seeded protocol coverage
+- More production-oriented observability and deployment patterns
+
+If this roadmap aligns with your use case, a ⭐ helps prioritize development.
+
+---
+
+## 🤝 Contributing
+
+Issues and PRs are welcome. If you have a target protocol family (CAN, telemetry, industrial buses, custom IoT frames), open an issue with sample payloads and expected fields.
+
+---
 
 ## 📜 License
 
-This project is licensed under the MIT License - see the `LICENSE` file for details.
+MIT — see [`LICENSE`](./LICENSE).
