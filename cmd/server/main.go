@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
 
 	"github.com/chuanjin/OmniBridge/internal/logger"
+	"github.com/chuanjin/OmniBridge/internal/mcp"
 	"github.com/chuanjin/OmniBridge/internal/parser"
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
@@ -17,7 +19,7 @@ func main() {
 	provider := flag.String("provider", "gemini", "LLM Provider (gemini, ollama)")
 	model := flag.String("model", "", "Model Name (default: gemini-2.0-flash for gemini, deepseek-coder:1.3b for ollama)")
 	endpoint := flag.String("endpoint", "", "API Endpoint")
-	mode := flag.String("mode", "simulate", "Mode (simulate, server)")
+	mode := flag.String("mode", "simulate", "Mode (simulate, server, mcp)")
 	addr := flag.String("addr", ":8080", "TCP Server Address (only used in server mode)")
 	debug := flag.Bool("debug", false, "Enable debug logging")
 
@@ -99,6 +101,15 @@ func main() {
 		srv := parser.NewTCPServer(*addr, dispatcher, discovery)
 		if err := srv.ListenAndServe(); err != nil {
 			logger.Fatal("Server failed", zap.Error(err))
+		}
+		return
+	}
+
+	if *mode == "mcp" {
+		mcpServer := mcp.NewServer(dispatcher, mgr, discovery)
+		ctx := context.Background()
+		if err := mcpServer.Run(ctx); err != nil {
+			logger.Fatal("MCP Server failed", zap.Error(err))
 		}
 		return
 	}

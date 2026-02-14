@@ -1,4 +1,4 @@
-# 🌉 OmniBridge
+# OmniBridge
 
 [![CI](https://github.com/chuanjin/OmniBridge/actions/workflows/ci.yml/badge.svg)](https://github.com/chuanjin/OmniBridge/actions/workflows/ci.yml)
 [![Go Version](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go)](https://go.dev/)
@@ -114,6 +114,47 @@ High-impact areas underway:
 - More production-oriented observability and deployment patterns
 
 If this roadmap aligns with your use case, a ⭐ helps prioritize development.
+
+---
+
+## 🧪 MCP Integration
+
+OmniBridge can run as an **MCP Server** (Model Context Protocol), exposing its protocol discovery and parsing capabilities to AI applications and agents.
+
+### Running as MCP Server
+
+```bash
+go run cmd/server/main.go --mode mcp --provider gemini --model gemini-2.0-flash
+```
+
+### Available Resources
+
+- `protocol://list` - List all known protocols with signatures
+- `protocol://manifest` - Complete manifest mapping
+
+### Available Tools
+
+- `parse_binary` - Parse hex-encoded binary data
+- `discover_protocol` - Trigger AI-based protocol discovery
+- `list_protocols` - List all available protocols
+
+### Available Prompts
+
+- `protocol_discovery` - Template for discovering new protocols
+- `parser_repair` - Template for fixing broken parsers
+
+### Example MCP Client Configuration (Claude Desktop)
+
+```json
+{
+  "mcpServers": {
+    "omnibridge": {
+      "command": "go",
+      "args": ["run", "/path/to/OmniBridge/cmd/server/main.go", "--mode", "mcp", "--provider", "gemini"]
+    }
+  }
+}
+```
 
 ---
 
