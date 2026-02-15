@@ -84,3 +84,53 @@ func Parse(data []byte) map[string]interface{} {
 		})
 	}
 }
+
+func TestEngine_Execute_Sandboxing(t *testing.T) {
+	e := NewEngine()
+
+	tests := []struct {
+		name    string
+		code    string
+		wantErr bool
+	}{
+		{
+			name: "Forbidden import: os",
+			code: `package dynamic
+import "os"
+func Parse(data []byte) map[string]interface{} {
+	_ = os.Args
+	return nil
+}`,
+			wantErr: true,
+		},
+		{
+			name: "Allowed import: fmt",
+			code: `package dynamic
+import "fmt"
+func Parse(data []byte) map[string]interface{} {
+	_ = fmt.Sprintf("test")
+	return nil
+}`,
+			wantErr: false,
+		},
+		{
+			name: "Forbidden import: net",
+			code: `package dynamic
+import "net"
+func Parse(data []byte) map[string]interface{} {
+	_, _ = net.Dial("tcp", "localhost:80")
+	return nil
+}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := e.Execute([]byte{0x00}, tt.code)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Engine.Execute() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
