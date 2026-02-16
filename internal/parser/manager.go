@@ -120,7 +120,7 @@ func (m *ParserManager) ParseData(protocolID string, data []byte) (map[string]in
 	}
 
 	// Native speed execution via Interpreter
-	return m.engine.Execute(data, code)
+	return m.engine.Execute(protocolID, data, code)
 }
 
 // Manifest represents the persistent mapping of signatures to parser IDs

@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -73,7 +74,7 @@ func Parse(data []byte) map[string]interface{} {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := e.Execute(tt.rawData, universalCode)
+			got, err := e.Execute("universal_test", tt.rawData, universalCode)
 			if err != nil {
 				t.Errorf("Engine.Execute() error = %v", err)
 				return
@@ -127,10 +128,39 @@ func Parse(data []byte) map[string]interface{} {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := e.Execute([]byte{0x00}, tt.code)
+			_, err := e.Execute(tt.name, []byte{0x00}, tt.code)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Engine.Execute() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func BenchmarkExecute_Uncached(b *testing.B) {
+	e := NewEngine()
+	code := `package dynamic
+func Parse(data []byte) map[string]interface{} {
+	return map[string]interface{}{"val": data[0]}
+}`
+	data := []byte{0x01}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// Using a different ID every time to force compilation
+		_, _ = e.Execute(fmt.Sprintf("id_%d", i), data, code)
+	}
+}
+
+func BenchmarkExecute_Cached(b *testing.B) {
+	e := NewEngine()
+	code := `package dynamic
+func Parse(data []byte) map[string]interface{} {
+	return map[string]interface{}{"val": data[0]}
+}`
+	data := []byte{0x01}
+	_, _ = e.Execute("fixed_id", data, code) // Pre-cache
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// Using the same ID to use cache
+		_, _ = e.Execute("fixed_id", data, code)
 	}
 }

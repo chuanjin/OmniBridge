@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/traefik/yaegi/interp"
 	"github.com/traefik/yaegi/stdlib"
@@ -23,37 +24,84 @@ func init() {
 	}
 }
 
-type Engine struct{}
+type ParserFunc func([]byte) map[string]interface{}
 
-func NewEngine() *Engine {
-	return &Engine{}
+type Engine struct {
+	cache map[string]ParserFunc
+	mu    sync.RWMutex
 }
 
-// Execute takes raw bytes and a string of Go code (from AI) and runs it
-func (e *Engine) Execute(rawData []byte, goCode string) (map[string]interface{}, error) {
-	// Create a fresh interpreter for EACH execution to avoid package/import conflicts
+func NewEngine() *Engine {
+	return &Engine{
+		cache: make(map[string]ParserFunc),
+	}
+}
+
+// Execute takes raw bytes and a string of Go code (from AI) and runs it.
+// It uses a cache to avoid redundant compilation of the same code.
+func (e *Engine) Execute(id string, rawData []byte, goCode string) (map[string]interface{}, error) {
+	// 1. Check if we already have a compiled version for this ID
+	e.mu.RLock()
+	fn, exists := e.cache[id]
+	e.mu.RUnlock()
+
+	if !exists {
+		// 2. Compile and cache
+		e.mu.Lock()
+		// Double check after acquiring lock
+		var err error
+		if fn, exists = e.cache[id]; !exists {
+			fn, err = e.compile(goCode)
+			if err != nil {
+				e.mu.Unlock()
+				return nil, err
+			}
+			e.cache[id] = fn
+		}
+		e.mu.Unlock()
+	}
+
+	// 3. Execute
+	return fn(rawData), nil
+}
+
+func (e *Engine) compile(goCode string) (ParserFunc, error) {
 	i := interp.New(interp.Options{})
-	_ = i.Use(symbols) // Use restricted symbols!
+	_ = i.Use(symbols)
 
 	_, err := i.Eval(goCode)
 	if err != nil {
 		return nil, fmt.Errorf("COMPILE_ERROR: %v", err)
 	}
 
-	// Look for the "Parse" function in the dynamic package
 	v, err := i.Eval("dynamic.Parse")
 	if err != nil {
 		return nil, fmt.Errorf("RECOVERY_ERROR: could not find Parse function: %v", err)
 	}
 
-	// Call the function
 	fn, ok := v.Interface().(func([]byte) map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("RECOVERY_ERROR: Parse function has wrong signature")
 	}
 
-	// Safety wrapper for the call to catch panics if needed (simplified for now)
-	result := fn(rawData)
+	return fn, nil
+}
 
-	return result, nil
+// ClearCache removes cached parsers, useful if code changes
+func (e *Engine) ClearCache(id string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	delete(e.cache, id)
+}
+
+// CompileAndCache pre-compiles code for an ID
+func (e *Engine) CompileAndCache(id string, goCode string) error {
+	fn, err := e.compile(goCode)
+	if err != nil {
+		return err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.cache[id] = fn
+	return nil
 }
