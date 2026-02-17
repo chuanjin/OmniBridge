@@ -1,16 +1,21 @@
 package parser
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 	"sync"
 )
 
+type trieNode struct {
+	children   map[byte]*trieNode
+	protocolID string
+}
+
 type Dispatcher struct {
 	manager *ParserManager
 	// Map of Hex Signature Prefix -> ProtocolID (e.g., "01" -> "VolvoEngine", "012A" -> "SpecialSensor")
 	routes map[string]string
+	root   *trieNode
 	mu     sync.RWMutex
 }
 
@@ -35,6 +40,7 @@ func NewDispatcher(mgr *ParserManager) *Dispatcher {
 	return &Dispatcher{
 		manager: mgr,
 		routes:  make(map[string]string),
+		root:    &trieNode{children: make(map[byte]*trieNode)},
 	}
 }
 
@@ -44,6 +50,19 @@ func (d *Dispatcher) Bind(signature []byte, protocolID string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.routes[hexSig] = protocolID
+
+	// Insert into Trie
+	curr := d.root
+	for _, b := range signature {
+		if curr.children == nil {
+			curr.children = make(map[byte]*trieNode)
+		}
+		if _, ok := curr.children[b]; !ok {
+			curr.children[b] = &trieNode{children: make(map[byte]*trieNode)}
+		}
+		curr = curr.children[b]
+	}
+	curr.protocolID = protocolID
 }
 
 // Ingest takes raw data, identifies the protocol, and parses it
@@ -56,16 +75,17 @@ func (d *Dispatcher) Ingest(data []byte) (map[string]interface{}, string, error)
 	defer d.mu.RUnlock()
 
 	var matchedProto string
-	var matchedSig string
+	curr := d.root
 
-	// Longest prefix match
-	for sig, proto := range d.routes {
-		sigBytes := hexToBytes(sig)
-		if bytes.HasPrefix(data, sigBytes) {
-			if len(sig) > len(matchedSig) {
-				matchedSig = sig
-				matchedProto = proto
+	// Longest prefix match using Trie
+	for _, b := range data {
+		if next, ok := curr.children[b]; ok {
+			curr = next
+			if curr.protocolID != "" {
+				matchedProto = curr.protocolID
 			}
+		} else {
+			break
 		}
 	}
 
