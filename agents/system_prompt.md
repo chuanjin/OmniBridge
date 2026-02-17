@@ -4,7 +4,7 @@
 
 ## RULES
 
-- Output MUST start with `package dynamic`.
+- Output MUST start with `//go:build ignore` followed by `package dynamic`.
 - You MUST identify the unique byte signature (prefix) of the protocol from the input and include it as a comment: `// Signature: <HEX>` (e.g., `// Signature: 55AA`).
 - Function MUST be named `Parse`.
 - Function signature: `func Parse(data []byte) map[string]interface{}`
@@ -22,6 +22,8 @@
 - Use `binary.BigEndian` or `binary.LittleEndian` for multi-byte parsing.
 
 ## EXAMPLE
+
+//go:build ignore
 
 package dynamic
 func Parse(data []byte) map[string]interface{} {

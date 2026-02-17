@@ -305,14 +305,14 @@ func sanitizeAiCode(input string) string {
 		input = input[pkgIdx:]
 	}
 
-	// 2. Ensure package is "dynamic"
-	// Replace "package something" with "package dynamic"
+	// 2. Ensure package is "dynamic" and add build ignore tag
+	// Replace "package something" with "//go:build ignore\n\npackage dynamic"
 	rePkg := regexp.MustCompile(`^package\s+\w+`)
 	if rePkg.MatchString(input) {
-		input = rePkg.ReplaceAllString(input, "package dynamic")
+		input = rePkg.ReplaceAllString(input, "//go:build ignore\n\npackage dynamic")
 	} else {
 		// If no package decl found at start, prepend it
-		input = "package dynamic\n\n" + input
+		input = "//go:build ignore\n\npackage dynamic\n\n" + input
 	}
 
 	// 3. Clean up common AI hallucinations in the function name

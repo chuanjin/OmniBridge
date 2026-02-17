@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"encoding/hex"
 	"fmt"
 	"sync"
 )
@@ -100,12 +99,4 @@ func (d *Dispatcher) Ingest(data []byte) (map[string]interface{}, string, error)
 	// Use the manager to run the cached parser
 	result, err := d.manager.ParseData(matchedProto, data)
 	return result, matchedProto, err
-}
-
-func hexToBytes(h string) []byte {
-	if len(h)%2 != 0 {
-		h = "0" + h
-	}
-	b, _ := hex.DecodeString(h)
-	return b
 }
