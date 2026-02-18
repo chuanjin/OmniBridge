@@ -1,8 +1,10 @@
 package parser
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/traefik/yaegi/interp"
 	"github.com/traefik/yaegi/stdlib"
@@ -39,7 +41,15 @@ func NewEngine() *Engine {
 
 // Execute takes raw bytes and a string of Go code (from AI) and runs it.
 // It uses a cache to avoid redundant compilation of the same code.
+// It executes with a default timeout of 50ms to prevent infinite loops.
 func (e *Engine) Execute(id string, rawData []byte, goCode string) (map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	return e.ExecuteWithContext(ctx, id, rawData, goCode)
+}
+
+// ExecuteWithContext allows passing a custom context for execution.
+func (e *Engine) ExecuteWithContext(ctx context.Context, id string, rawData []byte, goCode string) (map[string]interface{}, error) {
 	// 1. Check if we already have a compiled version for this ID
 	e.mu.RLock()
 	fn, exists := e.cache[id]
@@ -61,8 +71,28 @@ func (e *Engine) Execute(id string, rawData []byte, goCode string) (map[string]i
 		e.mu.Unlock()
 	}
 
-	// 3. Execute
-	return fn(rawData), nil
+	// 3. Execute with timeout protection
+	type result struct {
+		res map[string]interface{}
+		err error
+	}
+	resChan := make(chan result, 1)
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				resChan <- result{err: fmt.Errorf("PANIC: %v", r)}
+			}
+		}()
+		resChan <- result{res: fn(rawData)}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("EXECUTION_TIMEOUT: parser exceeded time limit")
+	case r := <-resChan:
+		return r.res, r.err
+	}
 }
 
 func (e *Engine) compile(goCode string) (ParserFunc, error) {

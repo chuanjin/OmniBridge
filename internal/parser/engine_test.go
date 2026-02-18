@@ -136,6 +136,40 @@ func Parse(data []byte) map[string]interface{} {
 	}
 }
 
+func TestEngine_Execute_Timeout(t *testing.T) {
+	e := NewEngine()
+	// Infinite loop code
+	code := `package dynamic
+func Parse(data []byte) map[string]interface{} {
+	for {
+	}
+}`
+	_, err := e.Execute("timeout_test", []byte{0x00}, code)
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !reflect.DeepEqual(err.Error(), "EXECUTION_TIMEOUT: parser exceeded time limit") {
+		t.Errorf("expected timeout error message, got: %v", err)
+	}
+}
+
+func TestEngine_Execute_Panic(t *testing.T) {
+	e := NewEngine()
+	// Code that panics
+	code := `package dynamic
+func Parse(data []byte) map[string]interface{} {
+	var s []int
+	return map[string]interface{}{"val": s[0]} // Out of bounds panic
+}`
+	_, err := e.Execute("panic_test", []byte{0x00}, code)
+	if err == nil {
+		t.Fatal("expected panic error, got nil")
+	}
+	if !reflect.DeepEqual(err.Error()[:6], "PANIC:") {
+		t.Errorf("expected panic error message, got: %v", err)
+	}
+}
+
 func BenchmarkExecute_Uncached(b *testing.B) {
 	e := NewEngine()
 	code := `package dynamic
